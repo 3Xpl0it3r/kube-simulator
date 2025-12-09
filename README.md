@@ -1,2 +1,11 @@
-# kube-simulator
-kube-simulator 是一个用于学习和开发的轻量级 K8s 模拟器，支持k8s全部功能，支持创建任意数量节点, 无任何依赖( etcd 和容器运行时)
+## 安装
+```bash
+git clone https://github.com/3Xpl0it3r/kube-simulator.git
+cd kube-simulator
+go mod tidy && go mod vendor
+bash scripts/build.sh
+# 默认启动一个包含4个节点的k8s集群
+./kube-simulator --cluster-listen <ip>:6443 
+# 启动完会在当前目录下生成一个admin.conf 配置文件,可以通过这个admin.conf配置文件来管理k8s集群
+```
+
