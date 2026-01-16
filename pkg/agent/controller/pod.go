@@ -1,4 +1,4 @@
-package agent
+package controller
 
 import (
 	"context"
@@ -11,6 +11,10 @@ import (
 )
 
 type EventOp int
+
+const (
+	DefaultEventBufferSize = 1024
+)
 
 const (
 	Added EventOp = iota
@@ -37,7 +41,7 @@ func NewPodController(client kubeclientset.Interface, podInformer coreinformer.P
 	manager := &PodController{
 		clusterClient: client,
 		podInformer:   podInformer,
-		podEventCh:    make(chan PodEvent),
+		podEventCh:    make(chan PodEvent, DefaultEventBufferSize),
 	}
 
 	return manager
@@ -66,26 +70,35 @@ func (p *PodController) Chan() <-chan PodEvent {
 }
 
 func (p *PodController) onAdd(obj interface{}) {
-	if pod, ok := obj.(*coreapi.Pod); ok {
-		p.podEventCh <- PodEvent{Op: Added, Pod: pod}
+	pod, ok := obj.(*coreapi.Pod)
+	if !ok || pod.Spec.NodeName == "" {
+		return
 	}
+	p.podEventCh <- PodEvent{Op: Added, Pod: pod}
 }
+
 func (p *PodController) onDelete(obj interface{}) {
-	if pod, ok := obj.(*coreapi.Pod); ok {
-		p.podEventCh <- PodEvent{Op: Added, Pod: pod}
+	pod, ok := obj.(*coreapi.Pod)
+	if !ok || pod.Spec.NodeName == "" {
+		return
 	}
+	p.podEventCh <- PodEvent{Op: Delete, Pod: pod}
 }
+
 func (p *PodController) onUpdate(oldObj, newObj interface{}) {
 	oldPod, ok := oldObj.(*coreapi.Pod)
-	if !ok {
+	if !ok || oldPod.Spec.NodeName == "" {
 		return
 	}
 	newPod, ok := newObj.(*coreapi.Pod)
-	if !ok {
+	if !ok || newPod.Spec.NodeName == "" {
 		return
 	}
-	if oldPod.GetResourceVersion() == newPod.GetResourceVersion() {
-		return
+	if newPod.Status.Phase != coreapi.PodRunning || oldPod.GetResourceVersion() != newPod.GetResourceVersion() {
+		op := Update
+		if newPod.GetObjectMeta().GetDeletionTimestamp() != nil {
+			op = Delete
+		}
+		p.podEventCh <- PodEvent{Op: op, Pod: newPod}
 	}
-	p.podEventCh <- PodEvent{Op: Update, Pod: newPod}
 }

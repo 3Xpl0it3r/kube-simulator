@@ -2,10 +2,12 @@ package options
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"path/filepath"
 
 	"3Xpl0it3r.com/kube-simulator/pkg/simulator"
+	"3Xpl0it3r.com/kube-simulator/pkg/util"
 	"github.com/spf13/pflag"
 )
 
@@ -46,6 +48,9 @@ func (o *Options) Validate() error {
 
 // Complete fill some default value to options
 func (o *Options) Complete() error {
+	if o.ClusterListen == "" {
+		o.ClusterListen = fmt.Sprintf("%s:%d", getLocalIp(), 6443)
+	}
 	if host, port, err := net.SplitHostPort(o.ClusterListen); err != nil {
 		return err
 	} else {
@@ -77,7 +82,7 @@ func (o *Options) FlagsSets() *pflag.FlagSet {
 	// global options
 	fs.BoolVar(&o.ResetCluster, "reset", false, "reset cluster if cluster is already inited")
 
-	fs.StringVar(&o.ClusterListen, "cluster-listen", "127.0.0.1:6443", "the address that kube-apiserver listen")
+	fs.StringVar(&o.ClusterListen, "cluster-listen", "", "the address that kube-apiserver listen")
 	fs.StringVar(&o.DataDir, "data-dir", DefaultSimulatorDir, "data dir")
 	fs.StringVar(&o.CertificateDir, "certificate-dir", DefaultCertificateDir, "certificated dir")
 
@@ -115,4 +120,12 @@ func (o *Options) Config() simulator.Config {
 
 func certName(keyFile, certFile string) string {
 	return keyFile
+}
+
+func getLocalIp() string {
+	ip, err := util.GetLocalIP()
+	if err != nil {
+		return "127.0.0.1"
+	}
+	return ip
 }

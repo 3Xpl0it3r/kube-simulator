@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	agtcontroller "3Xpl0it3r.com/kube-simulator/pkg/agent/controller"
+	agtmanager "3Xpl0it3r.com/kube-simulator/pkg/agent/manager"
 	kuberesource "3Xpl0it3r.com/kube-simulator/pkg/kuberes"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -21,14 +23,15 @@ var loggerForAgent = logrus.WithField("component", "agent")
 
 // SimuAgent represent SimuAgent
 type SimuAgent struct {
-	podController  *PodController
-	nodeController *NodeController
-	nodeManager    *NodeManager
-	maxPods        int
-	maxNodes       int
-	nodeNum        int
-	recorder       record.EventBroadcaster
-	clusterClient  kubeclientset.Interface
+	podController     *agtcontroller.PodController
+	nodeController    *agtcontroller.NodeController
+	nodeStatusManager agtmanager.Manager
+	podManager        agtmanager.Manager
+	maxPods           int
+	maxNodes          int
+	nodeNum           int
+	recorder          record.EventBroadcaster
+	clusterClient     kubeclientset.Interface
 }
 
 func Run(config *Config) error {
@@ -40,7 +43,6 @@ func Run(config *Config) error {
 		maxPods:       110,
 		maxNodes:      100,
 		clusterClient: client,
-		nodeManager:   NewNodeManager(),
 		nodeNum:       config.NodeNum,
 	}
 
@@ -51,8 +53,10 @@ func Run(config *Config) error {
 
 	clusterInformers := buildKubeStandardResourceInformerFactory(client)
 
-	agent.nodeController = NewNodeController(client, clusterInformers.Core().V1().Nodes())
-	agent.podController = NewPodController(client, clusterInformers.Core().V1().Pods())
+	agent.nodeController = agtcontroller.NewNodeController(client, clusterInformers.Core().V1().Nodes())
+	agent.podController = agtcontroller.NewPodController(client, clusterInformers.Core().V1().Pods())
+	agent.nodeStatusManager = agtmanager.NewNodeManager(client)
+	agent.podManager = agtmanager.NewPodStatusManager(client)
 
 	go func() {
 		loggerForAgent.Info("begin run simu-agent")
@@ -69,19 +73,22 @@ func (a *SimuAgent) run() error {
 		if node, err := registerBootstrapNode(idx, a.clusterClient); err != nil {
 			return err
 		} else {
-			a.nodeManager.onNodeAdd(node)
+			a.nodeStatusManager.OnNodeAdd(node)
+			if err := a.podManager.OnNodeAdd(node); err != nil {
+				return err
+			}
 		}
 	}
 
 	go a.nodeController.Run(ctx)
 	go a.podController.Run(ctx)
+	go a.nodeStatusManager.Run(ctx)
+	go a.podManager.Run(ctx)
 
-	return a.syncLoop(ctx)
+	return a.mainLoop(ctx)
 }
 
-func (a *SimuAgent) syncLoop(ctx context.Context) error {
-	nodeSyncTicker := time.NewTicker(5 * time.Second)
-	defer nodeSyncTicker.Stop()
+func (a *SimuAgent) mainLoop(ctx context.Context) error {
 	for {
 		select {
 		case event, ok := <-a.podController.Chan():
@@ -89,11 +96,11 @@ func (a *SimuAgent) syncLoop(ctx context.Context) error {
 				continue
 			}
 			switch event.Op {
-			case Added:
+			case agtcontroller.Added:
 				a.HandleForPodOnAdd(event.Pod)
-			case Delete:
+			case agtcontroller.Delete:
 				a.HandleForPodOnDelete(event.Pod)
-			case Update:
+			case agtcontroller.Update:
 				a.HandleForPodOnUpdate(event.Pod)
 			}
 		case event, ok := <-a.nodeController.Chan():
@@ -101,59 +108,67 @@ func (a *SimuAgent) syncLoop(ctx context.Context) error {
 				continue
 			}
 			switch event.Op {
-			case Added:
+			case agtcontroller.Added:
 				a.HandleForNodeOnAdd(event.Node)
-			case Delete:
+			case agtcontroller.Delete:
 				a.HandleForNodeOnDelete(event.Node)
-			case Update:
+			case agtcontroller.Update:
 				a.HandleForNodeOnUpdate(event.Node)
 			}
-		case <-nodeSyncTicker.C:
-			a.SyncNodeLease()
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	}
 }
 
-// MethodName [#TODO](should add some comments)
-func (a *SimuAgent) SyncNodeLease() {
-	allNodes := a.nodeManager.AllNodes()
-	for _, node := range allNodes {
-		tryResyncNodeLease(a.clusterClient, node)
-	}
-}
-
+// for pod add
 func (a *SimuAgent) HandleForPodOnAdd(pod *coreapi.Pod) {
-	a.nodeManager.onPodAdd(pod)
+	if err := a.podManager.OnPodAdd(pod); err != nil {
+		return
+	}
+	a.nodeStatusManager.OnPodAdd(pod)
 }
 
-func (a *SimuAgent) HandleForPodOnUpdate(newPod *coreapi.Pod) {
-	a.nodeManager.onPodUpdate(newPod)
+// for pod update
+func (a *SimuAgent) HandleForPodOnUpdate(pod *coreapi.Pod) {
+	if err := a.podManager.OnPodUpdate(pod); err != nil {
+		return
+	}
+	a.nodeStatusManager.OnPodUpdate(pod)
 }
 
+// for pod delete
 func (a *SimuAgent) HandleForPodOnDelete(pod *coreapi.Pod) {
-	a.nodeManager.onPodDelete(pod)
+	a.podManager.OnPodDelete(pod)
 }
 
+// when node added ,first update nodeManager, then create nodelease or update nodelease if it existed
 func (a *SimuAgent) HandleForNodeOnAdd(node *coreapi.Node) {
-	a.nodeManager.onNodeAdd(node)
-	if err := tryResyncNodeLease(a.clusterClient, node.Name); err != nil {
+	if err := a.nodeStatusManager.OnNodeAdd(node); err != nil {
 		loggerForAgent.WithError(err).Error("failed update node lease")
+	}
+	if err := a.podManager.OnNodeAdd(node); err != nil {
+		loggerForAgent.WithError(err).Error("podmanager register node failed ")
 	}
 }
 
+// for node update
 func (a *SimuAgent) HandleForNodeOnUpdate(node *coreapi.Node) {
-	a.nodeManager.onNodeUpdate(node)
-	if err := tryResyncNodeLease(a.clusterClient, node.Name); err != nil {
+	if err := a.nodeStatusManager.OnNodeAdd(node); err != nil {
 		loggerForAgent.WithError(err).Error("failed update node lease")
+	}
+	if err := a.podManager.OnNodeUpdate(node); err != nil {
+		loggerForAgent.WithError(err).Error("podmanager update node failed ")
 	}
 }
 
+// for node delete
 func (a *SimuAgent) HandleForNodeOnDelete(node *coreapi.Node) {
-	a.nodeManager.onNodeDelete(node)
-	if err := tryResyncNodeLease(a.clusterClient, node.Name); err != nil {
+	if err := a.nodeStatusManager.OnNodeDelete(node); err != nil {
 		loggerForAgent.WithError(err).Error("failed update node lease")
+	}
+	if err := a.podManager.OnNodeDelete(node); err != nil {
+		loggerForAgent.WithError(err).Error("podmanager delete node failed ")
 	}
 }
 
@@ -162,15 +177,4 @@ func buildKubeStandardResourceInformerFactory(kubeClient kubernetes.Interface) i
 	factoryOpts = append(factoryOpts, informers.WithNamespace(coreapi.NamespaceAll))
 	factoryOpts = append(factoryOpts, informers.WithTweakListOptions(func(listOptions *metav1.ListOptions) {}))
 	return informers.NewSharedInformerFactoryWithOptions(kubeClient, 5*time.Second, factoryOpts...)
-}
-
-func tryResyncNodeLease(client kubeclientset.Interface, nodeName string) error {
-	if originlease, err := client.CoordinationV1().Leases(KubeNamespaceNodeLease).Get(context.TODO(), nodeName, metav1.GetOptions{}); err == nil {
-		kuberesource.UpdateLease(originlease)
-		_, err = client.CoordinationV1().Leases(KubeNamespaceNodeLease).Update(context.TODO(), originlease, metav1.UpdateOptions{})
-		return err
-	}
-	newLease := kuberesource.NewLeaseObject(nodeName)
-	_, err := client.CoordinationV1().Leases(KubeNamespaceNodeLease).Create(context.TODO(), newLease, metav1.CreateOptions{})
-	return err
 }

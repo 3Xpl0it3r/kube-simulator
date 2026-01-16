@@ -1,4 +1,4 @@
-package agent
+package manager
 
 import coreapi "k8s.io/api/core/v1"
 
@@ -10,6 +10,10 @@ type CGrpupManager struct {
 	CpuUsed         int64
 	DiskTotal       int64
 	DiskUsage       int32
+}
+
+func NewCGroupManager(node *coreapi.Node) *CGrpupManager {
+	return &CGrpupManager{}
 }
 
 func (c *CGrpupManager) OnAdd(pod *coreapi.Pod) {

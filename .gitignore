@@ -16,3 +16,4 @@
 vendor/
 db
 .data
+kube-simulator

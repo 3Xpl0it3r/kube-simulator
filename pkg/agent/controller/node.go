@@ -1,4 +1,4 @@
-package agent
+package controller
 
 import (
 	"context"
@@ -10,9 +10,6 @@ import (
 	"k8s.io/client-go/tools/record"
 )
 
-const (
-	KubeNamespaceNodeLease = "kube-node-lease"
-)
 
 // NodeEvent represent nodeevent
 type NodeEvent struct {
@@ -32,7 +29,7 @@ func NewNodeController(client kubeclientset.Interface, nodeInformer coreinformer
 	manager := &NodeController{
 		clusterClient: client,
 		nodeInformer:  nodeInformer,
-		nodeCh:        make(chan NodeEvent),
+		nodeCh:        make(chan NodeEvent, DefaultEventBufferSize),
 	}
 	return manager
 }
@@ -84,8 +81,4 @@ func (n *NodeController) onDelete(obj interface{}) {
 	if node, ok := obj.(*coreapi.Node); ok {
 		n.nodeCh <- NodeEvent{Op: Delete, Node: node}
 	}
-}
-
-func leaseName(node *coreapi.Node) string {
-	return node.GetName()
 }

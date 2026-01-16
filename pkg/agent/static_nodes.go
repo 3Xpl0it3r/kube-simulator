@@ -13,6 +13,7 @@ import (
 
 var loggerForCli = logrus.WithField("component", "simulator")
 
+const KubeNamespaceNodeLease = "kube-node-lease"
 const (
 	StaticNodePrefix = "mock-node-%d"
 )
