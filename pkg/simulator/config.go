@@ -9,12 +9,14 @@ import (
 )
 
 const (
-	DefaultCertNameCA         = "etcd"
-	DefaultCertNameRootCA     = "ca"
-	DefaultCertNameEtcdServer = "etcd-server"
-	DefaultCertNameApiServer  = "apiserver"
-	DefaultCertNameEtcdClient = "apiserver-etcd"
-	DefaultServiceAccountName = "service-account"
+	DefaultCertNameCA               = "etcd"
+	DefaultCertNameRootCA           = "ca"
+	DefaultCertNameFrontProxyCA     = "front-proxy-ca"
+	DefaultCertNameFrontProxyClient = "front-proxy-client"
+	DefaultCertNameEtcdServer       = "etcd-server"
+	DefaultCertNameApiServer        = "apiserver"
+	DefaultCertNameEtcdClient       = "apiserver-etcd"
+	DefaultServiceAccountName       = "service-account"
 
 	DefaultConfKubeControllerManager = "kube-controller-manager.yml"
 	DefaultConfKubeScheduler         = "kube-scheduler.yml"
@@ -50,6 +52,18 @@ func (c *Config) Complete() error {
 		c.Etcd.ServerCert.Name = DefaultCertNameEtcdServer
 		c.Etcd.ServerCert.KeyFile = pathForKey(c.CertificateDir, DefaultCertNameEtcdServer)
 		c.Etcd.ServerCert.CertFile = pathForCert(c.CertificateDir, DefaultCertNameEtcdServer)
+	}
+
+	if c.Cluster.TLS.FrontProxyCA.Name == "" {
+		c.Cluster.TLS.FrontProxyCA.Name = DefaultCertNameFrontProxyCA
+		c.Cluster.TLS.FrontProxyCA.KeyFile = pathForKey(c.CertificateDir, DefaultCertNameFrontProxyCA)
+		c.Cluster.TLS.FrontProxyCA.CertFile = pathForCert(c.CertificateDir, DefaultCertNameFrontProxyCA)
+	}
+
+	if c.Cluster.TLS.FrontProxyClient.Name == "" {
+		c.Cluster.TLS.FrontProxyClient.Name = DefaultCertNameFrontProxyClient
+		c.Cluster.TLS.FrontProxyClient.KeyFile = pathForKey(c.CertificateDir, DefaultCertNameFrontProxyClient)
+		c.Cluster.TLS.FrontProxyClient.CertFile = pathForCert(c.CertificateDir, DefaultCertNameFrontProxyClient)
 	}
 
 	if c.Cluster.TLS.Server.Name == "" {

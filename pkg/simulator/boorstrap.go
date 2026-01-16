@@ -30,6 +30,10 @@ func bootstrapAllNecessaryClusterCertificates(config *Config) error {
 		return errors.Wrap(err, "create certificate file for etcd-ca failed")
 	}
 
+	if err := mycertutil.CreateCACertFiles(config.Cluster.TLS.FrontProxyCA, mycertutil.NewCACertificateConfig("front-proxy-ca")); err != nil {
+		return errors.Wrap(err, "create certificate file for front-proxy-ca failed")
+	}
+
 	kubeExtAlt := k8certutil.AltNames{
 		DNSNames: []string{
 			"kubernetes",
@@ -43,6 +47,10 @@ func bootstrapAllNecessaryClusterCertificates(config *Config) error {
 	}
 	if err := mycertutil.CreateGenericCertFiles(config.Cluster.TLS.Server, config.Cluster.TLS.CA, mycertutil.NewServerCerfiticateConfig("kube-apiserver", kubeExtAlt, "kubernetes")); err != nil {
 		return errors.Wrap(err, "create certificate file for kube-apiserver failed")
+	}
+
+	if err := mycertutil.CreateGenericCertFiles(config.Cluster.TLS.FrontProxyClient, config.Cluster.TLS.FrontProxyCA, mycertutil.NewServerCerfiticateConfig("front-proxy-client", kubeExtAlt)); err != nil {
+		return errors.Wrap(err, "create certificate file for front-proxy-client failed")
 	}
 
 	etcdExtAlt := k8certutil.AltNames{

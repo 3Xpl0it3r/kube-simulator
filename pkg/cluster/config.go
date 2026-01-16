@@ -28,6 +28,8 @@ type TLS struct {
 	ServiceAccountSigningKeyFile string
 	Server                       mycertutil.CertKeyPair
 	CA                           mycertutil.CertKeyPair
+	FrontProxyCA                 mycertutil.CertKeyPair
+	FrontProxyClient             mycertutil.CertKeyPair
 	EtcdCA                       string
 	EtcdClient                   mycertutil.CertKeyPair
 }
