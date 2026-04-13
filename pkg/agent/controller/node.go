@@ -3,7 +3,7 @@ package controller
 import (
 	"context"
 
-	coreapi "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	coreinformer "k8s.io/client-go/informers/core/v1"
 	kubeclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
@@ -13,11 +13,11 @@ import (
 
 // NodeEvent represent nodeevent
 type NodeEvent struct {
-	Node *coreapi.Node
+	Node *corev1.Node
 	Op   EventOp
 }
 
-// NodeController represent nodemanager
+// NodeController 用来同步节点心跳信息
 type NodeController struct {
 	clusterClient kubeclientset.Interface
 	recorder      record.EventRecorder
@@ -57,17 +57,17 @@ func (n *NodeController) Chan() <-chan NodeEvent {
 }
 
 func (n *NodeController) onAdd(obj interface{}) {
-	if node, ok := obj.(*coreapi.Node); ok {
+	if node, ok := obj.(*corev1.Node); ok {
 		n.nodeCh <- NodeEvent{Op: Added, Node: node}
 	}
 }
 
 func (n *NodeController) onUpdate(oldObj, newObj interface{}) {
-	oldNode, ok := oldObj.(*coreapi.Node)
+	oldNode, ok := oldObj.(*corev1.Node)
 	if !ok {
 		return
 	}
-	newNode, ok := newObj.(*coreapi.Node)
+	newNode, ok := newObj.(*corev1.Node)
 	if !ok {
 		return
 	}
@@ -78,7 +78,7 @@ func (n *NodeController) onUpdate(oldObj, newObj interface{}) {
 }
 
 func (n *NodeController) onDelete(obj interface{}) {
-	if node, ok := obj.(*coreapi.Node); ok {
+	if node, ok := obj.(*corev1.Node); ok {
 		n.nodeCh <- NodeEvent{Op: Delete, Node: node}
 	}
 }

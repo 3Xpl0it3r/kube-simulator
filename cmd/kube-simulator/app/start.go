@@ -7,14 +7,15 @@ import (
 
 	"3Xpl0it3r.com/kube-simulator/cmd/kube-simulator/options"
 	"3Xpl0it3r.com/kube-simulator/pkg/simulator"
-	"github.com/sirupsen/logrus"
+	_ "3Xpl0it3r.com/kube-simulator/pkg/util"
+
 	"github.com/spf13/cobra"
 	logsapi "k8s.io/component-base/logs/api/v1"
+	"k8s.io/klog/v2"
 )
 
 func init() {
-	logrus.SetLevel(logrus.InfoLevel)
-	logrus.SetOutput(os.Stdout)
+	klog.LogToStderr(false)
 	logsapi.ReapplyHandling = logsapi.ReapplyHandlingIgnoreUnchanged
 }
 

@@ -5,7 +5,8 @@ import (
 	"sync"
 	"time"
 
-	kuberesource "3Xpl0it3r.com/kube-simulator/pkg/kuberes"
+	apiclient "3Xpl0it3r.com/kube-simulator/pkg/apiclient"
+	coordinationv1 "k8s.io/api/coordination/v1"
 	coreapi "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeclientset "k8s.io/client-go/kubernetes"
@@ -21,7 +22,7 @@ type nodeStatus struct {
 	cgroup   *CGrpupManager
 }
 
-// NodeManager is reponsible for mantain all node information
+// NodeManager 管理节点的状态(节点资源信息)
 type NodeManager struct {
 	sync.RWMutex
 	nodeStorage   map[string]*nodeStatus
@@ -110,13 +111,13 @@ func (m *NodeManager) OnNodeDelete(node *coreapi.Node) error {
 	return nil
 }
 
-// AllNodes [#TODO](should add some comments)
+// allNodes return all nodes name
 func (m *NodeManager) allNodes() []string {
 	m.RLock()
 	defer m.RUnlock()
 	nodes := make([]string, len(m.nodeStorage))
-	for node, _ := range m.nodeStorage {
-		nodes = append(nodes, node)
+	for nodeName := range m.nodeStorage {
+		nodes = append(nodes, nodeName)
 	}
 	return nodes
 }
@@ -144,12 +145,21 @@ func (m *NodeManager) syncAllNodes() {
 }
 
 func tryResyncNodeLease(client kubeclientset.Interface, nodeName string) error {
-	if originlease, err := client.CoordinationV1().Leases(KubeNamespaceNodeLease).Get(context.TODO(), nodeName, metav1.GetOptions{}); err == nil {
-		kuberesource.UpdateLease(originlease)
-		_, err = client.CoordinationV1().Leases(KubeNamespaceNodeLease).Update(context.TODO(), originlease, metav1.UpdateOptions{})
-		return err
+
+	var (
+		duration  int32 = 60
+		renewTime       = metav1.NewMicroTime(time.Now())
+	)
+	lease := coordinationv1.Lease{
+		Spec: coordinationv1.LeaseSpec{
+			HolderIdentity:       &nodeName,
+			LeaseDurationSeconds: &duration,
+			RenewTime:            &renewTime,
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      nodeName,
+			Namespace: "kube-node-lease",
+		},
 	}
-	newLease := kuberesource.NewLeaseObject(nodeName)
-	_, err := client.CoordinationV1().Leases(KubeNamespaceNodeLease).Create(context.TODO(), newLease, metav1.CreateOptions{})
-	return err
+	return apiclient.CreateOrUpdateLease(client, &lease)
 }

@@ -6,6 +6,9 @@ import (
 	"strings"
 )
 
+func configlog() {
+}
+
 func GetArgsList(argsMap map[string]string, extraArgs []string) []string {
 	// add extra args to args map to override any default option
 	for _, arg := range extraArgs {

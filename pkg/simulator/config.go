@@ -38,6 +38,7 @@ type Config struct {
 	Etcd           EtcdConfig
 	Cluster        cluster.Config
 	Agent          agent.Config
+	NodeNum        int
 }
 
 // Complete [#TODO](should add some comments)

@@ -6,9 +6,9 @@ import (
 
 	agtcontroller "3Xpl0it3r.com/kube-simulator/pkg/agent/controller"
 	agtmanager "3Xpl0it3r.com/kube-simulator/pkg/agent/manager"
-	kuberesource "3Xpl0it3r.com/kube-simulator/pkg/kuberes"
+	apiclient "3Xpl0it3r.com/kube-simulator/pkg/apiclient"
+
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	coreapi "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
@@ -18,8 +18,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 )
-
-var loggerForAgent = logrus.WithField("component", "agent")
 
 // SimuAgent represent SimuAgent
 type SimuAgent struct {
@@ -35,7 +33,7 @@ type SimuAgent struct {
 }
 
 func Run(config *Config) error {
-	client, err := kuberesource.NewClusterClient("", config.ClientConfig)
+	client, err := apiclient.NewClusterClient("", config.ClientConfig)
 	if err != nil {
 		return errors.Wrap(err, "build clientconfig for agent failed")
 	}
@@ -43,7 +41,6 @@ func Run(config *Config) error {
 		maxPods:       110,
 		maxNodes:      100,
 		clusterClient: client,
-		nodeNum:       config.NodeNum,
 	}
 
 	eventBroadcaster := record.NewBroadcaster()
@@ -55,12 +52,12 @@ func Run(config *Config) error {
 
 	agent.nodeController = agtcontroller.NewNodeController(client, clusterInformers.Core().V1().Nodes())
 	agent.podController = agtcontroller.NewPodController(client, clusterInformers.Core().V1().Pods())
+
 	agent.nodeStatusManager = agtmanager.NewNodeManager(client)
 	agent.podManager = agtmanager.NewPodStatusManager(client)
 
 	go func() {
-		loggerForAgent.Info("begin run simu-agent")
-		loggerForAgent.Fatalf("run agent faild %s", agent.run())
+		logger.Fatal("run simulator-agent failed", agent.run())
 	}()
 	return nil
 }
@@ -68,17 +65,6 @@ func Run(config *Config) error {
 func (a *SimuAgent) run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	for idx := 0; idx < a.nodeNum; idx++ {
-		if node, err := registerBootstrapNode(idx, a.clusterClient); err != nil {
-			return err
-		} else {
-			a.nodeStatusManager.OnNodeAdd(node)
-			if err := a.podManager.OnNodeAdd(node); err != nil {
-				return err
-			}
-		}
-	}
 
 	go a.nodeController.Run(ctx)
 	go a.podController.Run(ctx)
@@ -89,6 +75,7 @@ func (a *SimuAgent) run() error {
 }
 
 func (a *SimuAgent) mainLoop(ctx context.Context) error {
+
 	for {
 		select {
 		case event, ok := <-a.podController.Chan():
@@ -145,30 +132,30 @@ func (a *SimuAgent) HandleForPodOnDelete(pod *coreapi.Pod) {
 // when node added ,first update nodeManager, then create nodelease or update nodelease if it existed
 func (a *SimuAgent) HandleForNodeOnAdd(node *coreapi.Node) {
 	if err := a.nodeStatusManager.OnNodeAdd(node); err != nil {
-		loggerForAgent.WithError(err).Error("failed update node lease")
+		logger.Errorf("nodeManager add node failed; Err: %v", err)
 	}
 	if err := a.podManager.OnNodeAdd(node); err != nil {
-		loggerForAgent.WithError(err).Error("podmanager register node failed ")
+		logger.Errorf("podManager add node failed; Err: %v", err)
 	}
 }
 
 // for node update
 func (a *SimuAgent) HandleForNodeOnUpdate(node *coreapi.Node) {
 	if err := a.nodeStatusManager.OnNodeAdd(node); err != nil {
-		loggerForAgent.WithError(err).Error("failed update node lease")
+		logger.Errorf("nodeStatusManager update node failed;Err: %v", err)
 	}
 	if err := a.podManager.OnNodeUpdate(node); err != nil {
-		loggerForAgent.WithError(err).Error("podmanager update node failed ")
+		logger.Errorf("podManager update node failed;Err: %v", err)
 	}
 }
 
 // for node delete
 func (a *SimuAgent) HandleForNodeOnDelete(node *coreapi.Node) {
 	if err := a.nodeStatusManager.OnNodeDelete(node); err != nil {
-		loggerForAgent.WithError(err).Error("failed update node lease")
+		logger.Errorf("nodeStatusManager delete node failed;%v", err)
 	}
 	if err := a.podManager.OnNodeDelete(node); err != nil {
-		loggerForAgent.WithError(err).Error("podmanager delete node failed ")
+		logger.Errorf("podManager delete node failed;Err: %v", err)
 	}
 }
 

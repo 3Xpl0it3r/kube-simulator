@@ -105,7 +105,7 @@ func (o *Options) FlagsSets() *pflag.FlagSet {
 	fs.StringVar(&o.Simulator.Cluster.TLS.ServiceAccountSigningKeyFile, "service-accont-pub-key", "", "")
 
 	// agent
-	fs.IntVar(&o.Simulator.Agent.NodeNum, "node-num", 4, "the numebr of node")
+	fs.IntVar(&o.Simulator.NodeNum, "node-num", 4, "the numebr of node")
 
 	return fs
 }

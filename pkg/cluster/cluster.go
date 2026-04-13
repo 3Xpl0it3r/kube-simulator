@@ -5,22 +5,22 @@ import (
 	"net/http"
 	"time"
 
-	kuberesource "3Xpl0it3r.com/kube-simulator/pkg/kuberes"
+	"3Xpl0it3r.com/kube-simulator/pkg/apiclient"
+	"3Xpl0it3r.com/kube-simulator/pkg/util"
+
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
-	apiserverapp "k8s.io/kubernetes/cmd/kube-apiserver/app"
-	controllermgapp "k8s.io/kubernetes/cmd/kube-controller-manager/app"
 )
 
 var (
-	loggerForApiServer    = logrus.WithField("component", "apiserver")
-	loggerForScheduler    = logrus.WithField("component", "scheduler")
-	loggerForControllerMg = logrus.WithField("component", "controller-manager")
+	apiserverlogger   = util.NewLogger("apiserver")
+	schedulerlogger   = util.NewLogger("scheduler")
+	controlermglogger = util.NewLogger("controller-manager")
 )
 
-func Run(config *Config) error {
+func Run(config *Config, stopCh <-chan struct{}) error {
+	configlog()
 	// run apiserver async
-	runApiServer(config)
+	runAPIServer(config)
 	if err := waitForApiServerRunning(config); err != nil {
 		return errors.Wrap(err, "wait apiserver ready failed")
 	}
@@ -31,7 +31,7 @@ func Run(config *Config) error {
 }
 
 // sync run apiserver
-func runApiServer(config *Config) {
+func runAPIServer(config *Config) {
 	argsMap := map[string]string{
 		"secure-port":                        config.ListenPort,
 		"advertise-address":                  config.ListenHost,
@@ -48,6 +48,7 @@ func runApiServer(config *Config) {
 		"requestheader-client-ca-file":       config.TLS.FrontProxyCA.CertFile,
 		"requestheader-extra-headers-prefix": "X-Remote-Extra-",
 		"requestheader-group-headers":        "X-Remote-Group",
+		"lease-reuse-duration-seconds":       "60",
 		"requestheader-username-headers":     "X-Remote-User",
 		"proxy-client-cert-file":             config.TLS.FrontProxyClient.CertFile,
 		"proxy-client-key-file":              config.TLS.FrontProxyClient.KeyFile,
@@ -60,12 +61,13 @@ func runApiServer(config *Config) {
 
 	args := GetArgsList(argsMap, nil)
 
-	command := apiserverapp.NewAPIServerCommand()
+	/* command := apiserverapp.NewAPIServerCommand() */
+	command := NewWrappedAPIServerCommand()
 	command.SetArgs(args)
 
 	go func() {
-		loggerForApiServer.Infof("Running kube-apiserver %s", args)
-		loggerForApiServer.Fatalf("apiserver existed %v", command.Execute())
+		apiserverlogger.Infof("Running kube-apiserver %s", args)
+		apiserverlogger.Fatalf("apiserver existed %v", command.Execute())
 	}()
 }
 
@@ -76,11 +78,11 @@ func runScheduler(config *Config) {
 		"authorization-kubeconfig":  config.ClientConfigFile.Scheduler,
 	}
 	args := GetArgsList(argsMap, nil)
-	command := NewRewriteSchedulerCommand()
+	command := NewWrappedSchedulerCommand()
 	command.SetArgs(args)
 	go func() {
-		loggerForScheduler.Infof("Running kube-scheduler %s", args)
-		loggerForScheduler.Fatalf("kube-scheduler existed %v", command.Execute())
+		schedulerlogger.Infof("Running kube-scheduler %s", args)
+		schedulerlogger.Fatalf("kube-scheduler existed %v", command.Execute())
 	}()
 
 }
@@ -102,17 +104,18 @@ func runControllerManager(config *Config) {
 
 	args := GetArgsList(argsMap, nil)
 
-	command := controllermgapp.NewControllerManagerCommand()
+	/* command := controllermgapp.NewControllerManagerCommand() */
+	command := NewWrappedControllerManagerCommand()
 	command.SetArgs(args)
 
 	go func() {
-		loggerForControllerMg.Infof("Running kube-controller-manager %s", args)
-		loggerForControllerMg.Fatalf("controller manager existed: %v", command.Execute())
+		controlermglogger.Infof("Running kube-controller-manager %s", args)
+		controlermglogger.Fatalf("controller manager existed: %v", command.Execute())
 	}()
 }
 
 func waitForApiServerRunning(config *Config) error {
-	client, err := kuberesource.NewClusterClient("", config.ClientConfigFile.Administrator)
+	client, err := apiclient.NewClusterClient("", config.ClientConfigFile.Administrator)
 	if err != nil {
 		return err
 	}
@@ -127,7 +130,7 @@ func waitForApiServerRunning(config *Config) error {
 			result := client.Discovery().RESTClient().Get().AbsPath("/healthz").Do(context.Background()).StatusCode(&healthStatus)
 			if result.Error() != nil || healthStatus != http.StatusOK {
 				time.Sleep(10 * time.Second)
-				loggerForApiServer.Debug("waiting apiserver ready....")
+				apiserverlogger.Info("waiting apiserver ready....")
 				continue
 			}
 			return nil
