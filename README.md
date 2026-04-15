@@ -3,19 +3,6 @@
 ## 项目简介
 kube-simulator 是一个轻量级的 Kubernetes 集群模拟器，用于本地开发、测试和学习 Kubernetes。
 
-
-
-## 功能特性
-
-- 🚀 快速启动本地 Kubernetes 集群
-- 💾 使用 SQLite 作为轻量级存储后端
-- 🔄 支持集群重置功能
-- 📝 自动生成必要的证书和配置文件
-- 🎯 模拟可配置数量的工作节点（默认4个）
-- 🔧 支持自定义网络配置（CIDR）
-
-## 系统要求
-
 - Go 1.25.4 或更高版本
 - 支持的操作系统：Linux、macOS、Windows
 
@@ -28,8 +15,9 @@ kube-simulator 是一个轻量级的 Kubernetes 集群模拟器，用于本地�
 git clone https://github.com/3Xpl0it3r/kube-simulator.git
 cd kube-simulator
 
-# 构建
-go build -o kube-simulator cmd/kube-simulator/kube-simulator.go
+# 执行完build.sh 在当前目录下会生成 kubectl 和 kube-simulator 两个二进制文件
+bash script/build.sh
+
 ```
 
 ### 基本使用
@@ -76,49 +64,3 @@ kubectl get pods --all-namespaces
 | `--node-num` | `4` | 模拟节点数量 |
 | `--reset` | `false` | 重置现有集群 |
 
-## 目录结构
-
-启动后，会在指定目录下生成以下结构：
-
-```
-.
-├── .data/
-│   ├── pki/           # 证书文件
-│   ├── db/            # SQLite 数据库
-│   ├── controller-manager.yml  # controller-manager kubeconfig
-│   ├── scheduler.yml   # scheduler kubeconfig
-│   └── admin.conf     # admin kubeconfig
-└── kube-simulator     # 可执行文件
-```
-
-
-## 运行测试
-
-```bash
-# 运行所有测试
-go test ./...
-```
-
-## 常见问题
-
-### Q: 如何连接到运行中的集群？
-A: 使用生成的 `admin.conf` 文件作为 kubeconfig，或者设置 `KUBECONFIG` 环境变量。
-
-### Q: 如何重置集群？
-A: 使用 `--reset` 参数启动程序，或者手动删除 `.data` 目录。
-
-### Q: 支持哪些平台？
-A: 支持 Go 语言支持的所有平台，主要测试在 Linux 和 macOS 上进行。
-
-## 许可证
-
-本项目采用 Apache License 2.0 许可证。详见 [LICENSE](LICENSE) 文件。
-
-## 贡献
-
-欢迎提交 Issue 和 Pull Request 来改进这个项目！
-
-## 相关链接
-
-- [Kubernetes 官方文档](https://kubernetes.io/docs/)
-- [kine 项目](https://github.com/k3s-io/kine)
